@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automated Bing Searches - Tab Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #1b2e17; /* Deep forest green */
+            color: #e2e8f0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .window-frame {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(20px);
+        }
+
+        .panel-glass {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 18px;
+        }
+
+        .inner-field {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+        }
+
+        /* Interactive browser selector tabs */
+        .session-tab {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+        .session-tab:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+        .session-tab.active {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(37, 99, 235, 0.05) 100%);
+            border-color: #3b82f6;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+        }
+
+        .mac-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+
+        input[type="number"], input[type="text"] { background: transparent; color: white; outline: none; border: none; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+        .label-heading {
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #8b9bb4;
+            margin-bottom: 0.75rem;
+            display: block;
+        }
+
+        /* Simulated typing blinking cursor */
+        .cursor {
+            display: inline-block;
+            width: 2.5px;
+            height: 1.1em;
+            background-color: #10b981;
+            animation: blink 1s infinite;
+            margin-left: 3px;
+            vertical-align: middle;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4 md:p-8">
+
+    <!-- Auth Lock Screen -->
+    <div id="lockScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#1b2e17]">
+        <div class="panel-glass p-12 text-center max-w-sm w-full mx-4">
+            <h2 class="text-xl font-bold mb-6 text-white tracking-wide">System Decrypted</h2>
+            <input type="password" id="pinInput" maxlength="4" placeholder="••••" 
+                class="w-full text-center text-4xl bg-black/30 border border-white/10 p-4 rounded-xl outline-none focus:border-blue-500 text-white tracking-[0.4em]">
+            <p class="mt-4 text-[10px] text-white/30 tracking-widest uppercase">Pin Required: 1045</p>
+        </div>
+    </div>
+
+    <!-- Main Application Window -->
+    <div id="app" class="hidden w-full max-w-7xl window-frame p-6 md:p-10 relative">
+        <!-- Mac Buttons -->
+        <div class="absolute top-6 left-8 flex">
+            <span class="mac-dot dot-red"></span>
+            <span class="mac-dot dot-yellow"></span>
+            <span class="mac-dot dot-green"></span>
+        </div>
+
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 pl-16">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-black text-white tracking-tight">Multi-Tab Controller</h1>
+                <p class="text-xs md:text-sm text-white/40 mt-1">Spawn external tabs, pick your target, and execute simulated typing.</p>
+            </div>
+            <div class="bg-black/20 rounded-full px-4 py-1.5 flex items-center gap-2 border border-white/5">
+                <span id="idleDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+                <span id="idleText" class="text-[10px] font-bold text-white/60 uppercase tracking-widest">Idle</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-12 gap-6 md:gap-8">
+            <!-- Left Side: Config & Spawner -->
+            <div class="col-span-12 lg:col-span-5 space-y-6">
+                <!-- Tab Spawner Section -->
+                <div class="panel-glass p-6 space-y-4 border-l-4 border-blue-500">
+                    <div>
+                        <h2 class="text-sm font-bold text-white uppercase tracking-wider">Tab Manager</h2>
+                        <p class="text-[11px] text-white/40 mt-1">Spawn real browser instances and orchestrate them from here.</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="spawnTabBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Spawn New Tab
+                        </button>
+                        <button id="closeAllTabsBtn" class="bg-white/5 hover:bg-red-500/10 hover:text-red-400 border border-white/10 text-white/50 text-xs font-bold py-3 px-4 rounded-xl transition">
+                            Close All
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Parameters config -->
+                <div class="panel-glass p-6 space-y-6">
+                    <div>
+                        <label class="label-heading">Search Target Limit</label>
+                        <div class="inner-field p-4 flex items-center justify-between">
+                            <span class="text-xs text-white/40 font-bold uppercase">Total Searches</span>
+                            <input type="number" id="searchLimit" value="10" class="text-2xl font-bold w-16 text-right">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="label-heading">Min Type Speed (ms)</label>
+                            <div class="inner-field p-3 flex items-center justify-center">
+                                <input type="number" id="minTypeSpeed" value="80" class="w-full text-center text-sm font-semibold">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="label-heading">Max Type Speed (ms)</label>
+                            <div class="inner-field p-3 flex items-center justify-center">
+                                <input type="number" id="maxTypeSpeed" value="200" class="w-full text-center text-sm font-semibold">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="label-heading">Hold Delay (s)</label>
+                            <div class="inner-field p-3 flex justify-between items-center text-xs">
+                                <input type="number" id="minDelay" value="3.0" step="0.5" class="w-full text-center font-semibold">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="label-heading">Auto Cycle Mode</label>
+                            <div class="flex items-center justify-center h-full">
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="autoCycle" class="sr-only peer" checked>
+                                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Direct Input -->
+                <div class="panel-glass p-6 space-y-4">
+                    <label class="label-heading">Direct Command Input</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="directSearchInput" placeholder="Type custom query here..." class="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-xs text-white placeholder-white/20 focus:border-emerald-500">
+                        <button id="executeDirectBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-3 rounded-xl transition">
+                            Type & Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Active Tabs & Live Typist Terminal -->
+            <div class="col-span-12 lg:col-span-7 space-y-6">
+                <!-- Tab List Selector -->
+                <div class="panel-glass p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <label class="label-heading !mb-0">Active Automation Targets</label>
+                        <span id="tabCountLabel" class="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/50">0 Tabs Open</span>
+                    </div>
+                    <div id="tabsContainer" class="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                        <!-- Dynamic active tabs listed here -->
+                        <div class="text-center py-6 text-xs text-white/30 border border-dashed border-white/10 rounded-xl">
+                            No external tabs spawned. Click "Spawn New Tab" above to initiate a session.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Typing Simulator & Status Monitor -->
+                <div class="panel-glass p-6 bg-black/40 border border-white/10 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-3">
+                        <span class="text-[9px] text-emerald-500/80 bg-emerald-500/10 px-2.5 py-1 rounded-full font-mono uppercase tracking-widest">Live Link</span>
+                    </div>
+
+                    <label class="label-heading">Live Automation Monitor</label>
+                    
+                    <!-- Simulated Browser Bar -->
+                    <div class="bg-[#1e1e1e] border border-white/5 rounded-xl overflow-hidden font-mono text-xs mt-2">
+                        <!-- Window Controls -->
+                        <div class="bg-black/30 px-4 py-2.5 flex items-center gap-3 border-b border-white/5">
+                            <div class="flex gap-1.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-red-500/80"></span>
+                                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></span>
+                                <span class="w-2.5 h-2.5 rounded-full bg-green-500/80"></span>
+                            </div>
+                            <!-- Address Input Mockup -->
+                            <div class="flex-1 bg-black/40 text-[10px] text-white/40 px-3 py-1 rounded-md flex items-center justify-between border border-white/5 select-none">
+                                <span id="mockUrlBar">https://www.bing.com</span>
+                                <svg class="w-3 h-3 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18" /></svg>
+                            </div>
+                        </div>
+
+                        <!-- Typing Canvas Workspace -->
+                        <div class="p-6 bg-gradient-to-b from-[#111] to-[#0a0a0a] min-h-[140px] flex flex-col justify-center items-center text-center">
+                            <div id="mockSearchContainer" class="w-full max-w-md space-y-4">
+                                <div class="flex justify-center mb-2">
+                                    <span class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">b i n g</span>
+                                </div>
+                                <div class="w-full bg-white/5 border border-white/10 rounded-full py-3 px-5 flex items-center justify-between shadow-inner">
+                                    <div class="flex items-center gap-3 flex-1 overflow-hidden">
+                                        <svg class="w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                        <span id="typingCanvas" class="text-white text-sm font-medium tracking-wide truncate"></span>
+                                        <span id="canvasCursor" class="cursor hidden"></span>
+                                        <span id="canvasPlaceholder" class="text-white/20 text-xs select-none">Enter automated search terms...</span>
+                                    </div>
+                                </div>
+                                <div class="text-[10px] text-white/30" id="monitorStatus">
+                                    Target Status: Offline
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Station Actions -->
+                <div class="flex flex-col sm:flex-row gap-4 pt-2">
+                    <button id="mainBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-6 rounded-xl transition text-xs uppercase tracking-widest text-center">
+                        Start Session Loops
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const pinInput = document.getElementById('pinInput');
+        const lockScreen = document.getElementById('lockScreen');
+        const app = document.getElementById('app');
+        
+        const spawnTabBtn = document.getElementById('spawnTabBtn');
+        const closeAllTabsBtn = document.getElementById('closeAllTabsBtn');
+        const tabsContainer = document.getElementById('tabsContainer');
+        const tabCountLabel = document.getElementById('tabCountLabel');
+        
+        const minTypeSpeed = document.getElementById('minTypeSpeed');
+        const maxTypeSpeed = document.getElementById('maxTypeSpeed');
+        const minDelay = document.getElementById('minDelay');
+        const autoCycle = document.getElementById('autoCycle');
+        const searchLimit = document.getElementById('searchLimit');
+        
+        const directSearchInput = document.getElementById('directSearchInput');
+        const executeDirectBtn = document.getElementById('executeDirectBtn');
+        
+        const typingCanvas = document.getElementById('typingCanvas');
+        const canvasCursor = document.getElementById('canvasCursor');
+        const canvasPlaceholder = document.getElementById('canvasPlaceholder');
+        const mockUrlBar = document.getElementById('mockUrlBar');
+        const monitorStatus = document.getElementById('monitorStatus');
+        const mainBtn = document.getElementById('mainBtn');
+
+        // State variables
+        let isRunning = false;
+        let tabs = [];
+        let activeTabId = null;
+        let searchCount = 0;
+        
+        const demoQueries = [
+            "Quantum physics research breakthroughs",
+            "Deep ocean creature photography",
+            "Gourmet vegan recipes simple",
+            "Web development trend updates",
+            "Top travel locations hidden gem",
+            "Alternative renewable clean energy",
+            "Artistic home organization tricks",
+            "Cybersecurity basics for developers",
+            "History of automated mechanisms"
+        ];
+
+        // Unlock logic
+        pinInput.oninput = (e) => {
+            if (e.target.value === '1045') {
+                lockScreen.classList.add('hidden');
+                app.classList.remove('hidden');
+                updateTabsUI();
+            }
+        };
+
+        // Tab Window Management
+        spawnTabBtn.onclick = () => {
+            const tabId = Date.now();
+            // Open a designated window ref pointing to Bing
+            const newWindow = window.open('https://www.bing.com', `BingAuto_${tabId}`, 'width=900,height=700');
+            
+            if (!newWindow) {
+                alert("Browser blocked the popup window. Please click 'Always Allow Popups' in your browser settings bar!");
+                return;
+            }
+
+            tabs.push({
+                id: tabId,
+                name: `Bing Automation Tab ${tabs.length + 1}`,
+                ref: newWindow,
+                queriesRun: 0,
+                lastQuery: "None"
+            });
+
+            // Set as active tab automatically
+            activeTabId = tabId;
+            updateTabsUI();
+        };
+
+        closeAllTabsBtn.onclick = () => {
+            tabs.forEach(tab => {
+                if (tab.ref && !tab.ref.closed) {
+                    tab.ref.close();
+                }
+            });
+            tabs = [];
+            activeTabId = null;
+            updateTabsUI();
+        };
+
+        function updateTabsUI() {
+            tabCountLabel.innerText = `${tabs.length} Tabs Open`;
+            tabsContainer.innerHTML = "";
+
+            if (tabs.length === 0) {
+                tabsContainer.innerHTML = `
+                    <div class="text-center py-6 text-xs text-white/30 border border-dashed border-white/10 rounded-xl">
+                        No external tabs spawned. Click "Spawn New Tab" above to initiate a session.
+                    </div>
+                `;
+                monitorStatus.innerText = "Target Status: Offline";
+                mockUrlBar.innerText = "https://www.bing.com";
+                return;
+            }
+
+            tabs.forEach((tab) => {
+                // Check if window is closed by user
+                if (tab.ref.closed) {
+                    // Remove closed tabs
+                    tabs = tabs.filter(t => t.id !== tab.id);
+                    if (activeTabId === tab.id) activeTabId = tabs.length > 0 ? tabs[0].id : null;
+                    updateTabsUI();
+                    return;
+                }
+
+                const isActive = tab.id === activeTabId;
+                const tabEl = document.createElement('div');
+                tabEl.className = `session-tab p-4 flex items-center justify-between ${isActive ? 'active' : ''}`;
+                tabEl.onclick = () => {
+                    activeTabId = tab.id;
+                    updateTabsUI();
+                    if (tab.ref && !tab.ref.closed) {
+                        tab.ref.focus();
+                    }
+                };
+
+                tabEl.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-2.5 h-2.5 rounded-full ${isActive ? 'bg-blue-400 animate-pulse' : 'bg-white/20'}"></div>
+                        <div>
+                            <p class="text-xs font-bold ${isActive ? 'text-white' : 'text-white/60'}">${tab.name}</p>
+                            <p class="text-[10px] text-white/30 font-mono">Last query: "${tab.lastQuery}"</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[10px] font-bold text-white/40 bg-white/5 border border-white/5 px-2 py-0.5 rounded">${tab.queriesRun} Searches</span>
+                        <button class="close-tab-btn text-white/30 hover:text-red-400 transition" data-id="${tab.id}">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                `;
+
+                // Handle closing tab from list
+                tabEl.querySelector('.close-tab-btn').onclick = (e) => {
+                    e.stopPropagation();
+                    const targetId = parseInt(e.currentTarget.getAttribute('data-id'));
+                    const targetTab = tabs.find(t => t.id === targetId);
+                    if (targetTab && targetTab.ref && !targetTab.ref.closed) {
+                        targetTab.ref.close();
+                    }
+                    tabs = tabs.filter(t => t.id !== targetId);
+                    if (activeTabId === targetId) {
+                        activeTabId = tabs.length > 0 ? tabs[0].id : null;
+                    }
+                    updateTabsUI();
+                };
+
+                tabsContainer.appendChild(tabEl);
+            });
+
+            // Update Mock Monitor text to link with selected tab status
+            if (activeTabId) {
+                const current = tabs.find(t => t.id === activeTabId);
+                monitorStatus.innerText = `Target Status: Linked to [${current.name}]`;
+            }
+        }
+
+        // Simulates realistic typing into monitor canvas
+        function typeSimulation(text) {
+            return new Promise((resolve) => {
+                canvasPlaceholder.classList.add('hidden');
+                canvasCursor.classList.remove('hidden');
+                typingCanvas.innerText = "";
+
+                let index = 0;
+                const minSp = parseInt(minTypeSpeed.value) || 80;
+                const maxSp = parseInt(maxTypeSpeed.value) || 200;
+
+                function appendCharacter() {
+                    if (!isRunning && !isDirectTyping) {
+                        resolve(false);
+                        return;
+                    }
+                    typingCanvas.innerText += text[index];
+                    index++;
+
+                    if (index < text.length) {
+                        const randomSpeed = Math.floor(Math.random() * (maxSp - minSp)) + minSp;
+                        setTimeout(appendCharacter, randomSpeed);
+                    } else {
+                        setTimeout(() => {
+                            resolve(true);
+                        }, 500); // Hold on search term before executing
+                    }
+                }
+                appendCharacter();
+            });
+        }
+
+        let isDirectTyping = false;
+
+        // Direct Control Typing & Sending
+        executeDirectBtn.onclick = async () => {
+            const query = directSearchInput.value.trim();
+            if (!query) return;
+
+            if (tabs.length === 0 || !activeTabId) {
+                alert("Please spawn and select a browser tab first!");
+                return;
+            }
+
+            const targetTab = tabs.find(t => t.id === activeTabId);
+            if (!targetTab || targetTab.ref.closed) {
+                alert("Target tab is closed! Please select another target.");
+                updateTabsUI();
+                return;
+            }
+
+            isDirectTyping = true;
+            executeDirectBtn.disabled = true;
+            executeDirectBtn.innerText = "Typing...";
+
+            // Focus tab immediately
+            targetTab.ref.focus();
+
+            const completed = await typeSimulation(query);
+            if (completed) {
+                // Type finished, update UI bar & execute window load
+                mockUrlBar.innerText = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
+                targetTab.ref.location.href = `https://www.bing.com/search?q=${encodeURIComponent(query)}&FORM=QBRE`;
+                
+                targetTab.lastQuery = query;
+                targetTab.queriesRun++;
+                updateTabsUI();
+                
+                directSearchInput.value = "";
+            }
+
+            executeDirectBtn.disabled = false;
+            executeDirectBtn.innerText = "Type & Send";
+            isDirectTyping = false;
+        };
+
+        // Main Loop Automation controls
+        mainBtn.onclick = () => {
+            if (isRunning) stopLoop(); else startLoop();
+        };
+
+        function startLoop() {
+            if (tabs.length === 0) {
+                alert("No automation targets available! Please spawn a tab first.");
+                return;
+            }
+            isRunning = true;
+            searchCount = 0;
+            mainBtn.innerText = "Stop Loop Session";
+            mainBtn.classList.replace('bg-blue-600', 'bg-red-500');
+            document.getElementById('idleDot').className = "w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse";
+            document.getElementById('idleText').innerText = "Running";
+            
+            runAutomation();
+        }
+
+        function stopLoop() {
+            isRunning = false;
+            mainBtn.innerText = "Start Session Loops";
+            mainBtn.classList.replace('bg-red-500', 'bg-blue-600');
+            document.getElementById('idleDot').className = "w-2.5 h-2.5 rounded-full bg-gray-500";
+            document.getElementById('idleText').innerText = "Idle";
+            
+            canvasPlaceholder.classList.remove('hidden');
+            canvasCursor.classList.add('hidden');
+            typingCanvas.innerText = "";
+            updateTabsUI();
+        }
+
+        async function runAutomation() {
+            const limit = parseInt(searchLimit.value) || 10;
+            if (!isRunning || searchCount >= limit || tabs.length === 0) {
+                stopLoop();
+                return;
+            }
+
+            // Check if active tab is still open, if not, find another or stop
+            let targetTab = tabs.find(t => t.id === activeTabId);
+            if (!targetTab || targetTab.ref.closed) {
+                // Auto switch target to another available tab if possible
+                const liveTabs = tabs.filter(t => !t.ref.closed);
+                if (liveTabs.length > 0) {
+                    activeTabId = liveTabs[0].id;
+                    targetTab = liveTabs[0];
+                    updateTabsUI();
+                } else {
+                    alert("All target browser tabs were closed!");
+                    stopLoop();
+                    return;
+                }
+            }
+
+            // Select a random query
+            const randomBase = demoQueries[Math.floor(Math.random() * demoQueries.length)];
+            const searchPhrase = `${randomBase} ${Math.floor(Math.random() * 9999)}`;
+
+            // Focus tab window
+            targetTab.ref.focus();
+
+            // Simulate the physical keystroke typing to terminal
+            monitorStatus.innerText = `Status: Typing into [${targetTab.name}]...`;
+            const typingDone = await typeSimulation(searchPhrase);
+
+            if (!typingDone || !isRunning) return;
+
+            // Direct the actual tab window to Bing with search parameters
+            mockUrlBar.innerText = `https://www.bing.com/search?q=${encodeURIComponent(searchPhrase)}`;
+            targetTab.ref.location.href = `https://www.bing.com/search?q=${encodeURIComponent(searchPhrase)}&FORM=QBRE`;
+            
+            targetTab.lastQuery = searchPhrase;
+            targetTab.queriesRun++;
+            searchCount++;
+            
+            updateTabsUI();
+
+            // Delay loop
+            const waitTime = (parseFloat(minDelay.value) || 3.0) * 1000;
+            let secondsLeft = Math.round(waitTime / 1000);
+
+            const countdown = setInterval(() => {
+                if (isRunning && secondsLeft > 0) {
+                    monitorStatus.innerText = `Logged Search! Holding for ${secondsLeft--}s before next cycle`;
+                } else {
+                    clearInterval(countdown);
+                }
+            }, 1000);
+
+            await new Promise(r => setTimeout(r, waitTime));
+            clearInterval(countdown);
+
+            // Auto cycle switch check
+            if (autoCycle.checked && tabs.length > 1 && isRunning) {
+                const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+                const nextIndex = (currentIndex + 1) % tabs.length;
+                activeTabId = tabs[nextIndex].id;
+                updateTabsUI();
+            }
+
+            runAutomation();
+        }
+
+        // Clean up checking of closed window references in background loops
+        setInterval(() => {
+            if (tabs.length > 0) {
+                const initialLength = tabs.length;
+                tabs = tabs.filter(t => !t.ref.closed);
+                if (tabs.length !== initialLength) {
+                    if (tabs.length > 0 && !tabs.some(t => t.id === activeTabId)) {
+                        activeTabId = tabs[0].id;
+                    } else if (tabs.length === 0) {
+                        activeTabId = null;
+                        if (isRunning) stopLoop();
+                    }
+                    updateTabsUI();
+                }
+            }
+        }, 1500);
+    </script>
+</body>
+</html>
